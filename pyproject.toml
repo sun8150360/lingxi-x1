@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lingxi-x1"
-version = "0.5.0"
+version = "0.5.1"
 description = "Lingxi X1 portable signal measurement desktop application"
 requires-python = ">=3.11"
 dependencies = ["numpy", "PySide6", "pyqtgraph", "pyserial"]

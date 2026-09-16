@@ -65,11 +65,7 @@ class MainWindow(QMainWindow):
         self.dropped_frames = 0
         self.protocol_errors = 0
         self.received_frames = 0
-        self.rendered_frames = 0
         self.last_fps_time = time.monotonic()
-        self.last_analysis_time = 0.0
-        self._time_axis_key: tuple[int, int] | None = None
-        self._time_axis = np.empty(0)
 
         self._build_ui()
         self._configure_plots()
@@ -77,8 +73,7 @@ class MainWindow(QMainWindow):
 
         self.display_timer = QTimer(self)
         self.display_timer.timeout.connect(self._tick)
-        self.display_timer.setTimerType(Qt.PreciseTimer)
-        self.display_timer.start(16)
+        self.display_timer.start(33)
         if start_simulator:
             self.statusBar().showMessage("模拟信号模式 · 设备未连接")
 
@@ -234,7 +229,7 @@ class MainWindow(QMainWindow):
         return card
 
     def _configure_plots(self) -> None:
-        pg.setConfigOptions(antialias=False, foreground="#687386")
+        pg.setConfigOptions(antialias=True, foreground="#687386")
         for plot in (self.time_plot, self.spectrum_plot):
             plot.setBackground(QColor(255, 255, 255, 165))
             plot.showGrid(x=True, y=True, alpha=0.12)
@@ -243,12 +238,8 @@ class MainWindow(QMainWindow):
         self.time_plot.setLabel("left", "电压", units="V")
         self.spectrum_plot.setLabel("bottom", "频率", units="Hz")
         self.spectrum_plot.setLabel("left", "幅值", units="V")
-        self.time_curve = self.time_plot.plot(pen=pg.mkPen(QColor("#007AFF"), width=1.5))
+        self.time_curve = self.time_plot.plot(pen=pg.mkPen(QColor("#007AFF"), width=2.2))
         self.spectrum_curve = self.spectrum_plot.plot(pen=pg.mkPen(QColor("#AF52DE"), width=2.0), fillLevel=0, brush=(175, 82, 222, 28))
-        self.time_curve.setDownsampling(auto=True, method="peak")
-        self.time_curve.setClipToView(True)
-        self.spectrum_curve.setDownsampling(auto=True, method="peak")
-        self.spectrum_curve.setClipToView(True)
         self.trigger_line = pg.InfiniteLine(angle=0, movable=True, pen=pg.mkPen((255, 149, 0, 185), width=1, style=Qt.DashLine))
         self.trigger_line.sigPositionChanged.connect(lambda: self.trigger_level_spin.setValue(self.trigger_line.value()))
         self.time_plot.addItem(self.trigger_line)
@@ -372,7 +363,6 @@ class MainWindow(QMainWindow):
                     self.frequency_spin.value(),
                     self.amplitude_spin.value(),
                     self.offset_spin.value(),
-                    noise=0.0,
                     third_harmonic=0.12,
                     gain_code=self.gain_combo.currentIndex(),
                     coupling=self.coupling_combo.currentText(),
@@ -415,38 +405,29 @@ class MainWindow(QMainWindow):
         elif mode in ("正常", "单次"):
             return False
         self.latest_voltage = voltage
-        axis_key = (len(voltage), frame.sample_rate)
-        if axis_key != self._time_axis_key:
-            self._time_axis_key = axis_key
-            self._time_axis = np.arange(len(voltage)) / frame.sample_rate
-        self.time_curve.setData(self._time_axis, voltage, skipFiniteCheck=True)
-        if abs(self.trigger_line.value() - level) > 1e-9:
-            self.trigger_line.setValue(level)
-        now = time.monotonic()
-        if now - self.last_analysis_time >= 0.1:
-            self.last_analysis_time = now
-            measurements = measure_waveform(voltage, frame.sample_rate)
-            spectrum = analyze_spectrum(voltage, frame.sample_rate)
-            self.spectrum_curve.setData(spectrum.frequencies, spectrum.amplitudes, skipFiniteCheck=True)
-            self.metric_cards["frequency"].set_value(self._format_frequency(measurements.frequency_hz))
-            self.metric_cards["vpp"].set_value(f"{measurements.vpp:.3f} V")
-            self.metric_cards["rms"].set_value(f"{measurements.rms_ac:.3f} V")
-            self.metric_cards["mean"].set_value(f"{measurements.mean:+.3f} V")
-            self.metric_cards["duty"].set_value(f"{measurements.duty_percent:.1f} %")
-            self.metric_cards["thd"].set_value(f"{spectrum.thd_percent:.2f} %")
-            for number, label in self.harmonic_labels.items():
-                label.setText(f"{spectrum.harmonics_percent[number]:.2f} %")
-            self.frame_info.setText(
-                f"{len(voltage)} 点 · {frame.sample_rate / 1000:.1f} kSa/s\n"
-                f"{GAIN_LABELS[min(frame.gain_code, 3)]} · {frame.coupling} · 序号 {frame.sequence}"
-            )
-        self.rendered_frames += 1
+        t = np.arange(len(voltage)) / frame.sample_rate
+        self.time_curve.setData(t, voltage)
+        self.trigger_line.setValue(level)
+        measurements = measure_waveform(voltage, frame.sample_rate)
+        spectrum = analyze_spectrum(voltage, frame.sample_rate)
+        self.spectrum_curve.setData(spectrum.frequencies, spectrum.amplitudes)
+        self.metric_cards["frequency"].set_value(self._format_frequency(measurements.frequency_hz))
+        self.metric_cards["vpp"].set_value(f"{measurements.vpp:.3f} V")
+        self.metric_cards["rms"].set_value(f"{measurements.rms_ac:.3f} V")
+        self.metric_cards["mean"].set_value(f"{measurements.mean:+.3f} V")
+        self.metric_cards["duty"].set_value(f"{measurements.duty_percent:.1f} %")
+        self.metric_cards["thd"].set_value(f"{spectrum.thd_percent:.2f} %")
+        for number, label in self.harmonic_labels.items():
+            label.setText(f"{spectrum.harmonics_percent[number]:.2f} %")
+        self.frame_info.setText(
+            f"{len(voltage)} 点 · {frame.sample_rate / 1000:.1f} kSa/s\n"
+            f"{GAIN_LABELS[min(frame.gain_code, 3)]} · {frame.coupling} · 序号 {frame.sequence}"
+        )
         elapsed = time.monotonic() - self.last_fps_time
         if elapsed >= 0.5:
-            fps = self.rendered_frames / elapsed
-            self.status_rate.setText(f"显示 {fps:.1f} FPS · {frame.sample_rate / 1000:.0f} kSa/s")
+            fps = self.received_frames / elapsed
+            self.status_rate.setText(f"{fps:.1f} FPS · {frame.sample_rate / 1000:.0f} kSa/s")
             self.received_frames = 0
-            self.rendered_frames = 0
             self.last_fps_time = time.monotonic()
         self._update_error_status()
         return True
@@ -457,10 +438,7 @@ class MainWindow(QMainWindow):
         self.dropped_frames = 0
         self.protocol_errors = 0
         self.received_frames = 0
-        self.rendered_frames = 0
         self.last_fps_time = time.monotonic()
-        self.last_analysis_time = 0.0
-        self._time_axis_key = None
         self.latest_frame = None
         self.latest_voltage = None
         self.single_pending = False
