@@ -2,6 +2,18 @@
 
 一套用于课程设计的单通道虚拟示波与频谱分析上位机，替代原项目的 LabVIEW 程序。界面采用苹果软件风格的浅色半透明液态玻璃视觉，支持模拟数据和真实串口设备。
 
+![灵析 X1 界面](ui-preview-v3.png)
+
+## 下载并使用
+
+不需要安装 Python、Qt 或 LabVIEW：
+
+1. 从 [最新版本发布页](https://github.com/sun8150360/lingxi-x1/releases/latest) 下载 `Lingxi-X1-*-Windows.zip`。
+2. 解压整个 ZIP，保留 `Lingxi-X1.exe` 与 `_internal` 文件夹的相对位置。
+3. 双击 `Lingxi-X1.exe`。程序默认进入模拟模式，没有硬件也可以体验完整界面。
+
+[直接前往最新版下载](https://github.com/sun8150360/lingxi-x1/releases/latest)
+
 ## 已实现功能
 
 - 实时时域波形和 FFT 频谱
@@ -49,3 +61,9 @@ python -m venv .venv
 ```
 
 生成结果位于 `dist\Lingxi-X1\Lingxi-X1.exe`。
+
+## 开源许可
+
+本项目采用 [MIT License](LICENSE)。你可以使用、复制、修改和分发本项目，但需要保留许可证和版权声明。
+
+如果发现问题或希望增加功能，请通过 [Issues](https://github.com/sun8150360/lingxi-x1/issues) 提交。
